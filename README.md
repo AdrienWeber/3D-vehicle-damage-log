@@ -2,6 +2,8 @@
 
 Mark and document vehicle damage on an interactive 3D model of the van. Built as a lightweight tool for documenting damage on rental transporters for insurance claims.
 
+### Live Demo: https://damage-log.wbr.one/
+
 ## Features
 
 - Rotate and zoom a 3D model of the vehicle and click directly on the spot of the damage
