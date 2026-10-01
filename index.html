@@ -1,0 +1,1258 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Van damage log</title>
+<meta name="description" content="Mark and document vehicle damage on an interactive 3D model.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Semi+Condensed:wght@600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#E6EAEE; --stage:#EEF1F4; --surface:#FFFFFF; --surface-2:#F3F5F7;
+  --ink:#16222C; --ink-2:#5A6874; --line:#D2D9DF; --grid:#C3CCD4;
+  --accent:#0D5C63; --accent-ink:#FFFFFF;
+  --minor:#C98F00; --moderate:#E0621F; --severe:#C3212B; --done:#8A949C; --ok:#2F7D4A;
+  --scrim:rgba(12,22,30,.5);
+  --body:"Barlow", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --cond:"Barlow Semi Condensed", "Arial Narrow", "Segoe UI", Roboto, sans-serif;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#11181E; --stage:#161F26; --surface:#1B252D; --surface-2:#222E37;
+    --ink:#E4EAEF; --ink-2:#98A6B2; --line:#2D3A45; --grid:#2E3C47;
+    --accent:#44A9B0; --accent-ink:#081A1C; --scrim:rgba(0,0,0,.6); color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#11181E; --stage:#161F26; --surface:#1B252D; --surface-2:#222E37;
+  --ink:#E4EAEF; --ink-2:#98A6B2; --line:#2D3A45; --grid:#2E3C47;
+  --accent:#44A9B0; --accent-ink:#081A1C; --scrim:rgba(0,0,0,.6); color-scheme:dark;
+}
+*,*::before,*::after{box-sizing:inherit}
+html{height:100%;scroll-padding-top:env(safe-area-inset-top,0px)}
+body{height:100%;margin:0;background:var(--bg);color:var(--ink);font:400 15px/1.45 var(--body);-webkit-font-smoothing:antialiased}
+button,input,select,textarea{font:inherit;color:inherit}
+h1,h2{font-family:var(--cond);font-weight:700;margin:0;letter-spacing:.005em}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+.app{display:grid;grid-template-columns:minmax(0,1fr) 390px;height:100%}
+.stage{position:relative;background:var(--stage);overflow:hidden;min-height:0}
+.stage canvas{display:block;width:100%;height:100%;touch-action:none}
+.stage.marking canvas{cursor:crosshair}
+
+.stage-head{position:absolute;top:18px;left:20px;right:20px;pointer-events:none;display:flex;flex-direction:column;gap:8px;align-items:flex-start}
+.stage-head h1{font-size:28px;line-height:1.1}
+.plate{display:inline-flex;align-items:stretch;border:2px solid #111;border-radius:5px;background:#fff;color:#111;font:700 20px/1 var(--cond);letter-spacing:.06em;overflow:hidden;box-shadow:0 1px 0 rgba(0,0,0,.08)}
+.plate .eu{background:#1D3F9A;color:#fff;font-size:11px;letter-spacing:0;display:flex;align-items:flex-end;justify-content:center;padding:0 5px 4px;min-width:20px}
+.plate .txt{padding:5px 10px 4px}
+.plate-empty{font-size:14px;color:var(--ink-2)}
+
+.hint{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:10px 14px;font-weight:500;pointer-events:none;max-width:min(90%,340px);text-align:center;box-shadow:0 6px 24px rgba(0,0,0,.12)}
+.stage.marking .hint{top:78px;transform:translateX(-50%)}
+
+.dock{position:absolute;left:16px;right:16px;bottom:16px;display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;pointer-events:none}
+.dock>*{pointer-events:auto}
+.views{display:flex;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:3px;gap:2px;flex-wrap:wrap}
+.views button{border:0;background:none;padding:7px 11px;border-radius:7px;cursor:pointer;font-weight:500;color:var(--ink-2)}
+.views button:hover{color:var(--ink);background:var(--surface-2)}
+
+.btn{border:1px solid var(--line);background:var(--surface);border-radius:9px;padding:9px 15px;font-weight:500;cursor:pointer;display:inline-flex;align-items:center;gap:8px;justify-content:center}
+.btn:hover{background:var(--surface-2)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn.primary:hover{filter:brightness(1.08)}
+.btn.big{padding:12px 20px;font-size:16px;font-weight:600;border-radius:11px}
+.btn.cancel-mark{background:var(--ink);color:var(--surface);border-color:var(--ink)}
+.btn.danger{color:var(--severe);border-color:transparent;background:none;padding-left:4px}
+#resetDemo.armed{background:var(--severe);color:#fff;border-color:var(--severe)}
+.btn.danger.armed{background:var(--severe);color:#fff}
+.btn[disabled]{opacity:.5;cursor:default}
+.plus{display:inline-block;width:18px;height:18px;border-radius:50%;border:2px solid currentColor;position:relative}
+.plus::before,.plus::after{content:"";position:absolute;background:currentColor;left:50%;top:50%;transform:translate(-50%,-50%)}
+.plus::before{width:8px;height:2px}.plus::after{width:2px;height:8px}
+
+.loading{position:absolute;inset:0;display:grid;place-items:center;color:var(--ink-2);pointer-events:none}
+
+.panel{background:var(--surface);border-left:1px solid var(--line);display:flex;flex-direction:column;min-height:0}
+.panel section{padding:18px 20px}
+.panel h2{font-size:19px}
+.vehicle{border-bottom:1px solid var(--line)}
+.fields{display:grid;grid-template-columns:1fr 1fr;gap:10px 12px;margin-top:12px}
+.fields .wide{grid-column:1/-1}
+label.f{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--ink-2);font-weight:500}
+label.f input,label.f select,label.f textarea{font-size:15px;color:var(--ink);background:var(--surface-2);border:1px solid var(--line);border-radius:8px;padding:8px 10px;min-width:0;width:100%}
+label.f textarea{resize:vertical;min-height:72px}
+label.f input:focus,label.f select:focus,label.f textarea:focus{border-color:var(--accent);outline:none;box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 22%,transparent)}
+
+.damages{flex:1;overflow:auto;min-height:0}
+.list-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.filter{display:flex;gap:4px}
+.filter button{border:1px solid transparent;background:none;padding:4px 9px;border-radius:999px;cursor:pointer;color:var(--ink-2);font-size:14px;font-weight:500}
+.filter button[aria-pressed="true"]{border-color:var(--line);background:var(--surface-2);color:var(--ink)}
+#list{list-style:none;margin:12px 0 0;padding:0;display:flex;flex-direction:column;gap:2px}
+.item{border-radius:10px;border:1px solid transparent}
+.item.sel{border-color:var(--line);background:var(--surface-2)}
+.item-main{display:flex;gap:12px;align-items:flex-start;width:100%;text-align:left;background:none;border:0;padding:10px;cursor:pointer;border-radius:10px}
+.item-main:hover{background:var(--surface-2)}
+.num{flex:none;width:28px;height:28px;border-radius:50%;background:var(--c);color:#fff;font:700 15px/28px var(--cond);text-align:center;box-shadow:0 0 0 2px var(--surface)}
+.item.repaired .num{background:var(--done)}
+.item-body{display:flex;flex-direction:column;min-width:0;flex:1}
+.zone{font-weight:600}
+.meta{font-size:13.5px;color:var(--ink-2)}
+.meta .st-done{color:var(--ok);font-weight:500}
+.note{font-size:14px;margin-top:3px;overflow-wrap:anywhere}
+.item-extra{padding:0 10px 12px 50px;display:flex;flex-direction:column;gap:10px}
+.thumbs{display:flex;gap:8px;flex-wrap:wrap}
+.thumbs img{width:64px;height:64px;object-fit:cover;border-radius:7px;border:1px solid var(--line);cursor:zoom-in;background:var(--surface-2)}
+.empty{color:var(--ink-2);padding:12px 2px;max-width:34ch}
+
+.model-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:14px}
+.model-label{font-size:13.5px;color:var(--ink-2);flex:1 1 100%}
+.btn.small{padding:6px 11px;font-size:14px}
+#modelUpload{position:relative}
+#modelUpload input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%}
+.panel-foot{border-top:1px solid var(--line);padding:14px 20px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.sync{margin:0 0 0 auto;font-size:13px;color:var(--ink-2)}
+
+.modal{position:fixed;inset:0;background:var(--scrim);display:grid;place-items:center;padding:16px;z-index:10}
+.modal[hidden]{display:none}
+.sheet{background:var(--surface);border-radius:14px;width:min(540px,100%);max-height:calc(100% - 8px);overflow:auto;padding:22px;box-shadow:0 20px 60px rgba(0,0,0,.3);display:flex;flex-direction:column;gap:14px}
+.sheet h2{font-size:22px}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+fieldset.sev{border:0;padding:0;margin:0;display:flex;flex-direction:column;gap:6px}
+fieldset.sev legend{font-size:13px;color:var(--ink-2);font-weight:500;padding:0;margin-bottom:6px}
+.seg{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.seg input{position:absolute;opacity:0;pointer-events:none}
+.seg label{border:1px solid var(--line);border-radius:8px;padding:8px 6px;text-align:center;cursor:pointer;font-weight:500;display:flex;align-items:center;justify-content:center;gap:7px}
+.seg label::before{content:"";width:10px;height:10px;border-radius:50%;background:var(--c)}
+.seg input:checked+label{border-color:var(--c);box-shadow:inset 0 0 0 1px var(--c);background:color-mix(in srgb,var(--c) 10%,transparent)}
+.seg input:focus-visible+label{outline:2px solid var(--accent);outline-offset:2px}
+.photo-row{display:flex;flex-direction:column;gap:8px}
+.photo-row .lbl{font-size:13px;color:var(--ink-2);font-weight:500}
+.photo-row .thumbs .t{position:relative}
+.photo-row .thumbs .rm{position:absolute;top:-6px;right:-6px;width:22px;height:22px;border-radius:50%;border:0;background:var(--ink);color:var(--surface);cursor:pointer;font-size:14px;line-height:22px;padding:0}
+.addphoto{align-self:flex-start;position:relative}
+.addphoto input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%}
+.photo-note{font-size:13px;color:var(--ink-2)}
+.actions{display:flex;gap:8px;align-items:center;margin-top:4px}
+.actions .spacer{flex:1}
+
+.lightbox{position:fixed;inset:0;background:rgba(0,0,0,.85);display:grid;place-items:center;z-index:20;padding:20px;cursor:zoom-out}
+.lightbox[hidden]{display:none}
+.lightbox img{max-width:100%;max-height:100%;border-radius:6px}
+
+.toast{position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--surface);padding:10px 16px;border-radius:9px;font-weight:500;z-index:30;max-width:90%;text-align:center}
+.toast[hidden]{display:none}
+
+@media (max-width: 860px){
+  html,body{height:auto}
+  .app{grid-template-columns:1fr;height:auto}
+  .stage{height:62vh;min-height:360px}
+  .panel{border-left:0;border-top:1px solid var(--line)}
+  .damages{overflow:visible}
+  .stage-head h1{font-size:23px}
+  .dock{left:10px;right:10px;bottom:10px}
+  .views button{padding:6px 8px;font-size:14px}
+  .modal{place-items:end center;padding:0}
+  .sheet{border-radius:16px 16px 0 0;max-height:92%;padding-bottom:calc(22px + env(safe-area-inset-bottom,0px))}
+}
+@media (max-width: 420px){ .row2,.fields{grid-template-columns:1fr} }
+@media print{ .dock,.panel-foot,.hint{display:none} }
+</style>
+</head>
+<body>
+<div class="app">
+  <main class="stage" id="stage" aria-label="3D view of the van">
+    <div class="stage-head">
+      <h1 id="hModel">Transporter</h1>
+      <div id="hPlate"></div>
+    </div>
+    <div class="loading" id="loading">Loading the 3D view…</div>
+    <div class="hint" id="modelBusy" hidden></div>
+    <div class="hint" id="hint" hidden>Click the spot on the van where the damage is. Esc cancels.</div>
+    <div class="dock">
+      <div class="views" role="group" aria-label="Camera view">
+        <button data-view="iso">3/4</button><button data-view="front">Front</button><button data-view="rear">Rear</button><button data-view="left">Left</button><button data-view="right">Right</button><button data-view="top">Top</button>
+      </div>
+      <button class="btn primary big" id="markBtn"><span class="plus" aria-hidden="true"></span><span>Mark damage</span></button>
+    </div>
+  </main>
+
+  <aside class="panel">
+    <section class="vehicle">
+      <h2>Vehicle</h2>
+      <div class="fields">
+        <label class="f wide">Model<input id="vModel" autocomplete="off"></label>
+        <label class="f">Number plate<input id="vPlate" placeholder="DD-AB 1234" autocomplete="off"></label>
+        <label class="f">Mileage (km)<input id="vMileage" inputmode="numeric" autocomplete="off"></label>
+        <label class="f wide">VIN<input id="vVin" autocomplete="off" spellcheck="false"></label>
+      </div>
+      <div class="model-row">
+        <span class="model-label" id="modelLabel">3D model: schematic van</span>
+        <label class="btn small" id="modelUpload" hidden>Upload model (.glb)<input type="file" id="modelFile" accept=".glb,model/gltf-binary"></label>
+        <button class="btn small" id="modelReset" hidden>Use schematic</button>
+      </div>
+    </section>
+    <section class="damages">
+      <div class="list-head">
+        <h2>Damages</h2>
+        <div class="filter" role="group" aria-label="Filter damages">
+          <button data-f="all" aria-pressed="true">All</button><button data-f="open" aria-pressed="false">Open</button><button data-f="repaired" aria-pressed="false">Repaired</button>
+        </div>
+      </div>
+      <ol id="list"></ol>
+      <p class="empty" id="empty">No damages logged yet. Press Mark damage, then click the spot on the van.</p>
+    </section>
+    <footer class="panel-foot">
+      <button class="btn" id="exportReport">Download report</button>
+      <button class="btn" id="exportCsv">CSV</button>
+      <button class="btn" id="resetDemo">Reset demo</button>
+      <p class="sync" id="sync">Connecting…</p>
+    </footer>
+  </aside>
+</div>
+
+<div class="modal" id="modal" hidden>
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="mTitle">
+    <h2 id="mTitle">New damage</h2>
+    <label class="f">Location<input id="fZone" autocomplete="off"></label>
+    <div class="row2">
+      <label class="f">Type<select id="fType"></select></label>
+      <label class="f">Date noticed<input type="date" id="fDate"></label>
+    </div>
+    <fieldset class="sev">
+      <legend>Severity</legend>
+      <div class="seg">
+        <input type="radio" name="sev" id="s-minor" value="minor"><label for="s-minor" style="--c:var(--minor)">Minor</label>
+        <input type="radio" name="sev" id="s-moderate" value="moderate"><label for="s-moderate" style="--c:var(--moderate)">Moderate</label>
+        <input type="radio" name="sev" id="s-severe" value="severe"><label for="s-severe" style="--c:var(--severe)">Severe</label>
+      </div>
+    </fieldset>
+    <label class="f">Description<textarea id="fNote" rows="3" placeholder="Size, depth, how it happened, other party involved"></textarea></label>
+    <div class="row2">
+      <label class="f">Noticed by<input id="fBy" autocomplete="off"></label>
+      <label class="f">Status<select id="fStatus"><option value="open">Open</option><option value="repaired">Repaired</option></select></label>
+    </div>
+    <div class="photo-row">
+      <span class="lbl">Photos</span>
+      <div class="thumbs" id="fPhotos"></div>
+      <label class="btn addphoto" id="addPhoto">Add photos<input type="file" id="fFile" accept="image/*" multiple></label>
+      <p class="photo-note" id="photoNote" hidden></p>
+    </div>
+    <div class="actions">
+      <button class="btn danger" id="fDelete">Delete</button>
+      <span class="spacer"></span>
+      <button class="btn" id="fCancel">Cancel</button>
+      <button class="btn primary" id="fSave">Save damage</button>
+    </div>
+  </div>
+</div>
+<div class="lightbox" id="lightbox" hidden><img alt="Damage photo" id="lbImg"></div>
+<div class="toast" id="toast" role="status" hidden></div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.147.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/controls/OrbitControls.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/loaders/GLTFLoader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/environments/RoomEnvironment.js"></script>
+<script>
+// Procedural van body with T6.1 short-wheelbase proportions (metres).
+// X = length (front at +X), Y = up, Z = width (right side at +Z).
+const VAN = { L: 4.904, W: 1.904, FA: 1.50, RA: -1.50, WR: 0.34, AR: 0.43, BEV: 0.05, YB: 0.36 };
+
+function buildVan() {
+  const { FA, RA, WR, AR, BEV, YB } = VAN;
+  const HALF = 0.902;               // extrude half-depth (plus bevel = 0.952)
+  const SIDE = HALF + BEV;          // flat side surface z
+  const group = new THREE.Group();
+  const pickables = [];
+
+  const M = {
+    paint: new THREE.MeshStandardMaterial({ color: 0xeef1f3, roughness: 0.38, metalness: 0.08 }),
+    trim: new THREE.MeshStandardMaterial({ color: 0x2b3136, roughness: 0.85 }),
+    glass: new THREE.MeshStandardMaterial({ color: 0x1b2730, roughness: 0.12, metalness: 0.35, side: THREE.DoubleSide }),
+    tyre: new THREE.MeshStandardMaterial({ color: 0x1a1c1e, roughness: 0.92 }),
+    rim: new THREE.MeshStandardMaterial({ color: 0xb4bcc3, roughness: 0.35, metalness: 0.6 }),
+    lamp: new THREE.MeshStandardMaterial({ color: 0xdfe7ee, roughness: 0.15, metalness: 0.2, emissive: 0x20262b }),
+    tail: new THREE.MeshStandardMaterial({ color: 0xa81e28, roughness: 0.3, emissive: 0x2a0508 }),
+    line: new THREE.LineBasicMaterial({ color: 0x86919a })
+  };
+
+  function add(mesh, part) {
+    mesh.castShadow = true;
+    mesh.userData.part = part;
+    group.add(mesh);
+    pickables.push(mesh);
+    return mesh;
+  }
+
+  // Body side profile with wheel arches cut into the bottom edge
+  const s = new THREE.Shape();
+  const a = Math.asin((YB - WR) / AR);
+  s.moveTo(-2.34, YB);
+  [RA, FA].forEach(xc => {
+    s.lineTo(xc - AR * Math.cos(a), YB);
+    s.absarc(xc, WR, AR, Math.PI - a, a, true);
+  });
+  s.lineTo(2.36, YB);
+  s.quadraticCurveTo(2.44, YB, 2.44, YB + 0.08);
+  s.lineTo(2.44, 0.86);
+  s.quadraticCurveTo(2.44, 0.98, 2.34, 1.01);
+  s.lineTo(1.86, 1.12);
+  s.lineTo(1.24, 1.86);
+  s.quadraticCurveTo(1.16, 1.93, 1.02, 1.93);
+  s.lineTo(-2.30, 1.93);
+  s.quadraticCurveTo(-2.40, 1.93, -2.40, 1.83);
+  s.lineTo(-2.40, YB + 0.06);
+  s.quadraticCurveTo(-2.40, YB, -2.34, YB);
+
+  const bodyGeo = new THREE.ExtrudeGeometry(s, {
+    depth: HALF * 2, bevelEnabled: true, bevelThickness: BEV, bevelSize: BEV,
+    bevelSegments: 4, curveSegments: 24
+  });
+  bodyGeo.translate(0, 0, -HALF);
+  const body = add(new THREE.Mesh(bodyGeo, M.paint), 'body');
+  body.receiveShadow = true;
+
+  // Windscreen, placed on the sloped face
+  const ws0 = new THREE.Vector2(1.86, 1.12), ws1 = new THREE.Vector2(1.24, 1.86);
+  const slope = ws1.clone().sub(ws0);
+  const slopeLen = slope.length();
+  const n2 = new THREE.Vector2(-slope.y, slope.x).normalize().negate(); // outward (+x,+y)
+  if (n2.x < 0) n2.negate();
+  const mid = ws0.clone().add(ws1).multiplyScalar(0.5).add(n2.clone().multiplyScalar(BEV + 0.004));
+  const wsMesh = new THREE.Mesh(new THREE.PlaneGeometry(1.62, slopeLen * 0.86), M.glass);
+  wsMesh.position.set(mid.x, mid.y, 0);
+  wsMesh.rotation.set(0, Math.PI / 2, Math.atan2(n2.y, n2.x), 'ZYX');
+  add(wsMesh, 'Windscreen');
+
+  // Front door windows
+  const dw = new THREE.Shape();
+  dw.moveTo(0.99, 1.20); dw.lineTo(1.68, 1.20); dw.lineTo(1.17, 1.82); dw.lineTo(0.99, 1.82); dw.lineTo(0.99, 1.20);
+  [1, -1].forEach(sd => {
+    const m = new THREE.Mesh(new THREE.ShapeGeometry(dw), M.glass);
+    m.position.z = sd * (SIDE + 0.003);
+    add(m, 'sidewindow');
+  });
+
+  // Rear window in the tailgate
+  const rw = new THREE.Mesh(new THREE.PlaneGeometry(1.44, 0.50), M.glass);
+  rw.position.set(-2.40 - BEV - 0.003, 1.56, 0);
+  rw.rotation.y = -Math.PI / 2;
+  add(rw, 'Rear window');
+
+  // Bumpers, grille, lights
+  const box = (sx, sy, sz, mat, x, y, z, part) => {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(sx, sy, sz), mat);
+    m.position.set(x, y, z);
+    return add(m, part);
+  };
+  box(0.13, 0.30, 1.90, M.trim, 2.455, 0.50, 0, 'Front bumper');
+  box(0.12, 0.24, 1.90, M.trim, -2.47, 0.48, 0, 'Rear bumper');
+  box(0.02, 0.13, 1.00, M.trim, 2.492, 0.79, 0, 'Grille');
+  [1, -1].forEach(sd => {
+    box(0.03, 0.11, 0.30, M.lamp, 2.482, 0.84, sd * 0.72, 'headlight');
+    box(0.03, 0.55, 0.10, M.tail, -2.452, 1.26, sd * 0.87, 'taillight');
+    box(0.15, 0.21, 0.06, M.trim, 1.72, 1.32, sd * 1.05, 'mirror');
+    box(0.08, 0.04, 0.12, M.trim, 1.74, 1.24, sd * 0.98, 'mirror');
+    box(0.14, 0.03, 0.02, M.trim, 1.08, 1.08, sd * (SIDE + 0.008), 'handle');
+  });
+  box(0.14, 0.03, 0.02, M.trim, 0.74, 1.04, SIDE + 0.008, 'handle');
+  box(0.30, 0.03, 0.02, M.trim, -2.465, 1.24, 0, 'handle');
+
+  // Wheels
+  const tyreGeo = new THREE.CylinderGeometry(WR, WR, 0.215, 40);
+  const rimGeo = new THREE.CylinderGeometry(0.21, 0.21, 0.222, 32);
+  [FA, RA].forEach(x => [1, -1].forEach(sd => {
+    const t = new THREE.Mesh(tyreGeo, M.tyre);
+    t.rotation.x = Math.PI / 2; t.position.set(x, WR, sd * 0.80);
+    add(t, 'wheel');
+    const r = new THREE.Mesh(rimGeo, M.rim);
+    r.rotation.x = Math.PI / 2; r.position.set(x, WR, sd * 0.80);
+    add(r, 'wheel');
+  }));
+
+  // Panel lines (visual only)
+  const lines = [];
+  const seg = pts => lines.push(pts);
+  [1, -1].forEach(sd => {
+    const z = sd * (SIDE + 0.002);
+    seg([[0.95, 0.42, z], [0.95, 1.89, z]]);
+    seg([[1.84, 0.80, z], [1.84, 1.14, z]]);
+  });
+  const zr = SIDE + 0.002;
+  seg([[-0.30, 0.42, zr], [-0.30, 1.89, zr]]);
+  seg([[-0.30, 1.22, zr], [-2.30, 1.22, zr]]);
+  const xr = -2.40 - BEV - 0.002;
+  seg([[xr, 0.62, -0.84], [xr, 0.62, 0.84], [xr, 1.89, 0.84], [xr, 1.89, -0.84], [xr, 0.62, -0.84]]);
+  lines.forEach(pts => {
+    const g = new THREE.BufferGeometry().setFromPoints(pts.map(p => new THREE.Vector3(...p)));
+    group.add(new THREE.Line(g, M.line));
+  });
+
+  return { group, pickables };
+}
+
+function detectZone(obj, p, n) {
+  const side = p.z > 0 ? 'Right' : 'Left';
+  const part = obj.userData.part;
+  const lower = s => s.charAt(0).toLowerCase() + s.slice(1);
+  if (part && part !== 'body') {
+    switch (part) {
+      case 'wheel': return `${p.x > 0 ? 'Front' : 'Rear'} ${lower(side)} wheel`;
+      case 'mirror': return `${side} mirror`;
+      case 'headlight': return `${side} headlight`;
+      case 'taillight': return `${side} tail light`;
+      case 'sidewindow': return `${side} door window`;
+      case 'handle':
+        if (p.x < -2) return 'Tailgate handle';
+        return `${side} ${p.x > 0.9 ? 'front door' : 'sliding door'} handle`;
+      default: return part;
+    }
+  }
+  for (const xc of [VAN.FA, VAN.RA]) {
+    const d = Math.hypot(p.x - xc, p.y - VAN.WR);
+    if (d < VAN.AR + 0.06 && Math.abs(n.z) < 0.6 && p.y < 0.85) {
+      return `${xc > 0 ? 'Front' : 'Rear'} ${lower(side)} wheel arch`;
+    }
+  }
+  if (p.x > 1.8 && p.y > 0.9 && n.y > 0.3 && Math.abs(n.z) < 0.6) return 'Bonnet';
+  if (n.y > 0.75 && p.y > 1.85) return 'Roof, ' + (p.x > 0.6 ? 'front' : p.x > -1.0 ? 'middle' : 'rear');
+  if (n.x > 0.3 && n.y > 0.3 && p.y > 1.1 && Math.abs(n.z) < 0.6) return 'A-pillar / windscreen frame';
+  if (Math.abs(n.z) > 0.6) {
+    let panel;
+    if (p.x > 1.84) panel = 'front wing';
+    else if (p.x > 0.95) panel = 'front door';
+    else if (p.x > -0.30) panel = side === 'Right' ? 'sliding door' : 'middle side panel';
+    else if (p.x > -1.9) panel = 'rear side panel';
+    else panel = 'rear quarter panel';
+    if (p.y < 0.55) panel += ', lower edge';
+    return `${side} ${panel}`;
+  }
+  if (n.x > 0.4) return 'Front, ' + (Math.abs(p.z) < 0.5 ? 'centre' : lower(side) + ' corner');
+  if (n.x < -0.4) return (Math.abs(p.z) < 0.84 && p.y > 0.62) ? 'Tailgate' : `Rear, ${lower(side)} corner`;
+  if (n.y < -0.3) return 'Underbody';
+  return `${side} edge`;
+}
+(function () {
+'use strict';
+const $ = s => document.querySelector(s);
+const SEV = { minor: 'Minor', moderate: 'Moderate', severe: 'Severe' };
+const TYPES = ['Scratch', 'Dent', 'Paint chip', 'Crack', 'Broken part', 'Rust', 'Other'];
+const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const cssVar = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const sevColor = d => d.status === 'repaired' ? cssVar('--done') : cssVar('--' + d.severity);
+const today = () => new Date().toISOString().slice(0, 10);
+const fmtDate = s => { if (!s) return ''; const d = new Date(s + 'T12:00:00'); return isNaN(d) ? s : d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }); };
+const newId = () => 'd' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+const photoSrc = p => p.startsWith('data:') ? p : '/_blob/' + p;
+
+let toastT;
+function toast(msg) { const t = $('#toast'); t.textContent = msg; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => t.hidden = true, 3200); }
+
+// ---------- State ----------
+let damages = [];
+let vehicle = { model: 'Transporter', plate: '', vin: '', mileage: '' };
+let selectedId = null, filter = 'all', markMode = false;
+let db = null, assets = null, downloads = null, mode = 'local', readOnly = false;
+
+// ---------- Local fallback ----------
+const STORE = (() => { try { return window.sessionStorage; } catch (e) { return null; } })();
+function lsGet(k, def) { try { const v = STORE.getItem(k); return v ? JSON.parse(v) : def; } catch (e) { return def; } }
+function lsSet(k, v) { try { STORE.setItem(k, JSON.stringify(v)); } catch (e) { toast('This tab is out of storage. Remove some photos or reset the demo.'); } }
+
+// ---------- Three.js scene ----------
+if (typeof THREE === 'undefined' || !THREE.OrbitControls) {
+  $('#loading').textContent = 'The 3D library could not load. Check your connection and reload.';
+  return;
+}
+const stage = $('#stage');
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+renderer.outputEncoding = THREE.sRGBEncoding;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.setClearColor(0x000000, 0);
+stage.prepend(renderer.domElement);
+$('#loading').remove();
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(35, 1, 0.1, 100);
+camera.position.set(6.5, 3.2, 6.5);
+const controls = new THREE.OrbitControls(camera, renderer.domElement);
+controls.target.set(0, 0.95, 0);
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+controls.minDistance = 2.2;
+controls.maxDistance = 16;
+controls.maxPolarAngle = Math.PI * 0.49;
+controls.enablePan = true;
+
+const hemi = new THREE.HemisphereLight(0xffffff, 0x8a949c, 0.85);
+scene.add(hemi);
+let envTex = null;
+try { if (THREE.RoomEnvironment) envTex = new THREE.PMREMGenerator(renderer).fromScene(new THREE.RoomEnvironment(), 0.04).texture; } catch (e) {}
+const sun = new THREE.DirectionalLight(0xffffff, 0.95);
+sun.position.set(4, 8, 3);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+Object.assign(sun.shadow.camera, { left: -4, right: 4, top: 4, bottom: -4, near: 1, far: 20 });
+sun.shadow.bias = -0.0005;
+scene.add(sun);
+const fill = new THREE.DirectionalLight(0xffffff, 0.35);
+fill.position.set(-5, 3, -4);
+scene.add(fill);
+
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(30, 30), new THREE.ShadowMaterial({ opacity: 0.2 }));
+ground.rotation.x = -Math.PI / 2;
+ground.receiveShadow = true;
+scene.add(ground);
+let grid;
+function makeGrid() {
+  if (grid) { scene.remove(grid); grid.geometry.dispose(); grid.material.dispose(); }
+  const c = new THREE.Color(cssVar('--grid') || '#c3ccd4');
+  grid = new THREE.GridHelper(12, 24, c, c);
+  grid.position.y = 0.001;
+  scene.add(grid);
+}
+makeGrid();
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { makeGrid(); rebuildMarkers(); renderList(); });
+
+const schematic = buildVan();
+let van = schematic;
+scene.add(van.group);
+
+// ---------- Markers ----------
+const markerGroup = new THREE.Group();
+scene.add(markerGroup);
+let draftMarker = null;
+
+function numberTexture(label, color) {
+  const c = document.createElement('canvas'); c.width = c.height = 128;
+  const x = c.getContext('2d');
+  x.beginPath(); x.arc(64, 64, 52, 0, Math.PI * 2);
+  x.fillStyle = color; x.fill();
+  x.lineWidth = 9; x.strokeStyle = '#ffffff'; x.stroke();
+  x.fillStyle = '#fff';
+  x.font = '700 58px "Barlow Semi Condensed", "Arial Narrow", Arial, sans-serif';
+  x.textAlign = 'center'; x.textBaseline = 'middle';
+  x.fillText(String(label), 64, 68);
+  const t = new THREE.CanvasTexture(c);
+  t.encoding = THREE.sRGBEncoding;
+  return t;
+}
+function makeMarker(d, isDraft) {
+  const g = new THREE.Group();
+  const colStr = isDraft ? cssVar('--accent') : sevColor(d);
+  const col = new THREE.Color(colStr);
+  const n = new THREE.Vector3().fromArray(d.normal).normalize();
+  const dot = new THREE.Mesh(new THREE.SphereGeometry(0.028, 16, 12), new THREE.MeshBasicMaterial({ color: col }));
+  const ring = new THREE.Mesh(new THREE.RingGeometry(0.05, 0.072, 32), new THREE.MeshBasicMaterial({ color: col, side: THREE.DoubleSide }));
+  ring.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), n);
+  ring.position.copy(n).multiplyScalar(0.005);
+  const tip = n.clone().multiplyScalar(0.19);
+  const stem = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), tip]), new THREE.LineBasicMaterial({ color: col }));
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: numberTexture(isDraft ? '+' : d.n, colStr), depthWrite: false }));
+  sprite.position.copy(tip);
+  sprite.scale.setScalar(0.17);
+  sprite.renderOrder = 2;
+  g.add(dot, ring, stem, sprite);
+  g.position.fromArray(d.pos);
+  g.userData.id = d.id;
+  [dot, sprite].forEach(o => o.userData.markerId = d.id);
+  return g;
+}
+function disposeGroup(g) {
+  g.traverse(o => {
+    if (o.geometry) o.geometry.dispose();
+    if (o.material) { if (o.material.map) o.material.map.dispose(); o.material.dispose(); }
+  });
+}
+function rebuildMarkers() {
+  markerGroup.children.slice().forEach(c => { markerGroup.remove(c); disposeGroup(c); });
+  visibleDamages().forEach(d => {
+    const m = makeMarker(d, false);
+    if (d.id === selectedId) m.scale.setScalar(1.45);
+    markerGroup.add(m);
+  });
+}
+function setDraftMarker(d) {
+  if (draftMarker) { scene.remove(draftMarker); disposeGroup(draftMarker); draftMarker = null; }
+  if (d) { draftMarker = makeMarker(d, true); draftMarker.scale.setScalar(1.3); scene.add(draftMarker); }
+}
+
+// ---------- Camera ----------
+const VIEWS = {
+  iso: { pos: [6.4, 3.1, 6.4], t: [0, 0.9, 0] },
+  front: { pos: [7.6, 1.4, 0], t: [0, 0.95, 0] },
+  rear: { pos: [-7.6, 1.4, 0], t: [0, 0.95, 0] },
+  left: { pos: [0, 1.4, -8.4], t: [0, 0.95, 0] },
+  right: { pos: [0, 1.4, 8.4], t: [0, 0.95, 0] },
+  top: { pos: [0, 11, 0.02], t: [0, 0, 0] }
+};
+let anim = null;
+function flyTo(pos, target) {
+  if (reduceMotion) { camera.position.copy(pos); controls.target.copy(target); controls.update(); return; }
+  anim = { p0: camera.position.clone(), t0: controls.target.clone(), p1: pos, t1: target, start: performance.now(), dur: 650 };
+}
+function aspectScale() { return Math.max(1, 1.5 / camera.aspect); }
+function goView(name) {
+  const v = VIEWS[name];
+  const t = new THREE.Vector3().fromArray(v.t);
+  const p = new THREE.Vector3().fromArray(v.pos).sub(t).multiplyScalar(name === 'top' ? Math.max(1, 1.2 / camera.aspect) : aspectScale()).add(t);
+  flyTo(p, t);
+}
+function focusDamage(d) {
+  const p = new THREE.Vector3().fromArray(d.pos);
+  const n = new THREE.Vector3().fromArray(d.normal).normalize();
+  const eye = p.clone().add(n.multiplyScalar(3.0 * aspectScale())).add(new THREE.Vector3(0, 0.7, 0));
+  if (eye.y < 0.4) eye.y = 0.4;
+  flyTo(eye, p);
+}
+document.querySelectorAll('.views button').forEach(b => b.addEventListener('click', () => goView(b.dataset.view)));
+
+function resize() {
+  const r = stage.getBoundingClientRect();
+  if (!r.width || !r.height) return;
+  renderer.setSize(r.width, r.height, false);
+  camera.aspect = r.width / r.height;
+  camera.updateProjectionMatrix();
+}
+new ResizeObserver(resize).observe(stage);
+resize();
+
+function loop(now) {
+  if (anim) {
+    const k = Math.min(1, (now - anim.start) / anim.dur);
+    const e = k < 0.5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2;
+    camera.position.lerpVectors(anim.p0, anim.p1, e);
+    controls.target.lerpVectors(anim.t0, anim.t1, e);
+    if (k >= 1) anim = null;
+  }
+  controls.update();
+  renderer.render(scene, camera);
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+controls.addEventListener('start', () => { anim = null; });
+
+// ---------- Picking ----------
+const raycaster = new THREE.Raycaster();
+const ndc = new THREE.Vector2();
+let downPt = null;
+renderer.domElement.addEventListener('pointerdown', e => { downPt = { x: e.clientX, y: e.clientY }; });
+renderer.domElement.addEventListener('pointerup', e => {
+  if (!downPt) return;
+  const moved = Math.hypot(e.clientX - downPt.x, e.clientY - downPt.y);
+  downPt = null;
+  if (moved > 6) return;
+  const r = renderer.domElement.getBoundingClientRect();
+  ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+  raycaster.setFromCamera(ndc, camera);
+  if (markMode) {
+    const hit = raycaster.intersectObjects(van.pickables, false)[0];
+    if (!hit) { toast('That spot is not on the van. Try again.'); return; }
+    const n = hit.face.normal.clone().transformDirection(hit.object.matrixWorld);
+    if (n.dot(raycaster.ray.direction) > 0) n.negate();
+    setMarkMode(false);
+    const draft = {
+      id: null, pos: hit.point.toArray().map(v => +v.toFixed(4)), normal: n.toArray().map(v => +v.toFixed(4)),
+      zone: van.custom ? zoneCustom(hit.object, hit.point, n) : detectZone(hit.object, hit.point, n), type: 'Scratch', severity: 'minor', status: 'open',
+      date: today(), by: '', note: '', photos: []
+    };
+    setDraftMarker(draft);
+    openForm(draft);
+    return;
+  }
+  const mh = raycaster.intersectObjects(markerGroup.children, true).find(h => h.object.userData.markerId);
+  if (mh) select(mh.object.userData.markerId, true);
+});
+
+function setMarkMode(on) {
+  if (on && readOnly) { toast('You have view access only, so damages can’t be added.'); return; }
+  markMode = on;
+  stage.classList.toggle('marking', on);
+  $('#hint').hidden = !on;
+  const b = $('#markBtn');
+  b.classList.toggle('primary', !on);
+  b.classList.toggle('cancel-mark', on);
+  b.querySelector('span:last-child').textContent = on ? 'Cancel marking' : 'Mark damage';
+  b.querySelector('.plus').hidden = on;
+}
+$('#markBtn').addEventListener('click', () => setMarkMode(!markMode));
+
+// ---------- List ----------
+function visibleDamages() {
+  return damages.filter(d => filter === 'all' || (filter === 'repaired' ? d.status === 'repaired' : d.status !== 'repaired')).sort((a, b) => a.n - b.n);
+}
+function renderList() {
+  const list = $('#list');
+  const vis = visibleDamages();
+  const open = damages.filter(d => d.status !== 'repaired').length;
+  const counts = { all: damages.length, open, repaired: damages.length - open };
+  document.querySelectorAll('.filter button').forEach(b => {
+    b.textContent = { all: 'All', open: 'Open', repaired: 'Repaired' }[b.dataset.f] + ' ' + counts[b.dataset.f];
+    b.setAttribute('aria-pressed', String(b.dataset.f === filter));
+  });
+  $('#empty').hidden = vis.length > 0;
+  $('#empty').textContent = damages.length ? 'Nothing matches this filter.' : 'No damages logged yet. Press Mark damage, then click the spot on the van.';
+  list.innerHTML = vis.map(d => {
+    const sel = d.id === selectedId;
+    const meta = [esc(d.type), esc(SEV[d.severity] || ''), esc(fmtDate(d.date))].filter(Boolean).join(', ');
+    const status = d.status === 'repaired' ? ' <span class="st-done">Repaired</span>' : '';
+    const extra = sel ? `<div class="item-extra">
+        ${(d.photos || []).length ? `<div class="thumbs">${d.photos.map(p => `<img src="${esc(photoSrc(p))}" alt="Photo of damage ${d.n}" loading="lazy">`).join('')}</div>` : ''}
+        ${d.by ? `<span class="meta">Noticed by ${esc(d.by)}</span>` : ''}
+        ${readOnly ? '' : `<div><button class="btn" data-edit="${esc(d.id)}">Edit damage</button></div>`}
+      </div>` : '';
+    return `<li class="item${sel ? ' sel' : ''}${d.status === 'repaired' ? ' repaired' : ''}" data-id="${esc(d.id)}">
+      <button class="item-main" data-sel="${esc(d.id)}" aria-expanded="${sel}">
+        <span class="num" style="--c:${esc(sevColor(d))}">${d.n}</span>
+        <span class="item-body"><span class="zone">${esc(d.zone)}</span><span class="meta">${meta}${status}</span>${d.note ? `<span class="note">${esc(d.note)}</span>` : ''}</span>
+      </button>${extra}</li>`;
+  }).join('');
+}
+$('#list').addEventListener('click', e => {
+  const img = e.target.closest('.thumbs img');
+  if (img) { $('#lbImg').src = img.src; $('#lightbox').hidden = false; return; }
+  const ed = e.target.closest('[data-edit]');
+  if (ed) { const d = damages.find(x => x.id === ed.dataset.edit); if (d) openForm(d); return; }
+  const s = e.target.closest('[data-sel]');
+  if (s) select(s.dataset.sel === selectedId ? null : s.dataset.sel, false);
+});
+document.querySelectorAll('.filter button').forEach(b => b.addEventListener('click', () => { filter = b.dataset.f; renderAll(); }));
+$('#lightbox').addEventListener('click', () => { $('#lightbox').hidden = true; });
+
+function select(id, fromScene) {
+  selectedId = id;
+  renderAll();
+  const d = damages.find(x => x.id === id);
+  if (d && !fromScene) focusDamage(d);
+  if (d && fromScene) {
+    const li = document.querySelector(`.item[data-id="${CSS.escape(id)}"]`);
+    if (li) li.scrollIntoView({ block: 'nearest', behavior: reduceMotion ? 'auto' : 'smooth' });
+  }
+}
+function renderAll() { rebuildMarkers(); renderList(); }
+
+// ---------- Vehicle ----------
+const vf = { model: '#vModel', plate: '#vPlate', vin: '#vVin', mileage: '#vMileage' };
+function renderVehicle() {
+  Object.entries(vf).forEach(([k, s]) => { const el = $(s); if (document.activeElement !== el) el.value = vehicle[k] || ''; el.readOnly = readOnly; });
+  $('#hModel').textContent = vehicle.model || 'Transporter';
+  $('#hPlate').innerHTML = vehicle.plate
+    ? `<span class="plate" aria-label="Number plate ${esc(vehicle.plate)}"><span class="eu">D</span><span class="txt">${esc(vehicle.plate.toUpperCase())}</span></span>`
+    : '<span class="plate-empty">Add the number plate under Vehicle.</span>';
+}
+Object.entries(vf).forEach(([k, s]) => {
+  $(s).addEventListener('change', async e => {
+    const v = e.target.value.trim();
+    if (v === (vehicle[k] || '')) return;
+    vehicle = Object.assign({}, vehicle, { [k]: v });
+    renderVehicle();
+    await saveVehicle();
+  });
+});
+
+// ---------- Form ----------
+let form = null; // working copy
+$('#fType').innerHTML = TYPES.map(t => `<option>${t}</option>`).join('');
+function openForm(d) {
+  form = JSON.parse(JSON.stringify(d));
+  form.photos = form.photos || [];
+  $('#mTitle').textContent = form.id ? `Damage ${form.n}` : 'New damage';
+  $('#fZone').value = form.zone || '';
+  $('#fType').value = TYPES.includes(form.type) ? form.type : 'Other';
+  $('#fDate').value = form.date || today();
+  $('#fNote').value = form.note || '';
+  $('#fBy').value = form.by || '';
+  $('#fStatus').value = form.status || 'open';
+  (document.querySelector(`input[name="sev"][value="${form.severity || 'minor'}"]`) || {}).checked = true;
+  const del = $('#fDelete');
+  del.hidden = !form.id; del.classList.remove('armed'); del.textContent = 'Delete';
+  const canPhoto = mode === 'local' || !!assets;
+  $('#addPhoto').hidden = !canPhoto;
+  $('#photoNote').hidden = mode !== 'local';
+  $('#photoNote').textContent = 'Photos are kept in this browser only.';
+  renderFormPhotos();
+  $('#modal').hidden = false;
+  setTimeout(() => $('#fZone').focus(), 30);
+}
+function closeForm() {
+  $('#modal').hidden = true;
+  form = null;
+  setDraftMarker(null);
+}
+function renderFormPhotos() {
+  $('#fPhotos').innerHTML = form.photos.map((p, i) => `<span class="t"><img src="${esc(photoSrc(p))}" alt="Photo ${i + 1}"><button class="rm" data-rm="${i}" aria-label="Remove photo ${i + 1}">×</button></span>`).join('');
+}
+$('#fPhotos').addEventListener('click', e => {
+  const rm = e.target.closest('[data-rm]');
+  if (rm) { form.photos.splice(+rm.dataset.rm, 1); renderFormPhotos(); return; }
+  const img = e.target.closest('img');
+  if (img) { $('#lbImg').src = img.src; $('#lightbox').hidden = false; }
+});
+$('#fFile').addEventListener('change', async e => {
+  const files = Array.from(e.target.files || []);
+  e.target.value = '';
+  const btn = $('#addPhoto');
+  for (const f of files) {
+    btn.firstChild.textContent = 'Uploading…';
+    try {
+      const dataUrl = await compress(f);
+      if (mode === 'db' && assets) {
+        const blob = await (await fetch(dataUrl)).blob();
+        const res = await assets.upload(blob, { type: 'image/jpeg' });
+        if (form) form.photos.push(res.id);
+      } else if (form) form.photos.push(dataUrl);
+      if (form) renderFormPhotos();
+    } catch (err) {
+      toast(err && err.code === 'quota_exceeded' ? 'Photo storage is full. Remove old photos first.' : 'That photo could not be added. Try a JPG or PNG.');
+    }
+  }
+  btn.firstChild.textContent = 'Add photos';
+});
+function compress(file) {
+  return new Promise((resolve, reject) => {
+    const fr = new FileReader();
+    fr.onerror = reject;
+    fr.onload = () => {
+      const img = new Image();
+      img.onerror = reject;
+      img.onload = () => {
+        const max = mode === 'local' ? 1000 : 1800;
+        const s = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
+        const c = document.createElement('canvas');
+        c.width = Math.round(img.naturalWidth * s); c.height = Math.round(img.naturalHeight * s);
+        c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+        resolve(c.toDataURL('image/jpeg', mode === 'local' ? 0.75 : 0.85));
+      };
+      img.src = fr.result;
+    };
+    fr.readAsDataURL(file);
+  });
+}
+$('#fCancel').addEventListener('click', closeForm);
+$('#modal').addEventListener('click', e => { if (e.target.id === 'modal') closeForm(); });
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape') return;
+  if (!$('#lightbox').hidden) { $('#lightbox').hidden = true; return; }
+  if (!$('#modal').hidden) { closeForm(); return; }
+  if (markMode) setMarkMode(false);
+});
+$('#fDelete').addEventListener('click', async () => {
+  const b = $('#fDelete');
+  if (!b.classList.contains('armed')) { b.classList.add('armed'); b.textContent = 'Confirm delete'; return; }
+  const id = form.id;
+  closeForm();
+  if (selectedId === id) selectedId = null;
+  await removeDamage(id);
+});
+$('#fSave').addEventListener('click', async () => {
+  if (!form) return;
+  const d = Object.assign({}, form, {
+    zone: $('#fZone').value.trim() || form.zone || 'Unspecified',
+    type: $('#fType').value,
+    date: $('#fDate').value,
+    note: $('#fNote').value.trim(),
+    by: $('#fBy').value.trim(),
+    status: $('#fStatus').value,
+    severity: (document.querySelector('input[name="sev"]:checked') || {}).value || 'minor',
+    updatedAt: new Date().toISOString()
+  });
+  if (!d.id) {
+    d.id = newId();
+    d.n = damages.reduce((m, x) => Math.max(m, x.n || 0), 0) + 1;
+    d.createdAt = d.updatedAt;
+  }
+  closeForm();
+  const ok = await saveDamage(d);
+  if (ok) { selectedId = d.id; if (filter !== 'all' && (filter === 'repaired') !== (d.status === 'repaired')) filter = 'all'; renderAll(); toast(`Damage ${d.n} saved.`); }
+});
+
+
+// ---------- Custom 3D model ----------
+let modelDoc = null, loadedAsset = null, axles = { F: 1.60, R: -1.50, WR: 0.357 }, genericBody = false;
+const busy = t => { const b = $('#modelBusy'); b.hidden = !t; if (t) b.textContent = t; };
+function renderModelRow() {
+  $('#modelLabel').textContent = van.custom ? `3D model: ${modelDoc && modelDoc.name ? modelDoc.name : 'custom model'}` : '3D model: schematic van';
+  const canWrite = !readOnly && (mode === 'local' || !!assets);
+  $('#modelUpload').hidden = !canWrite;
+  $('#modelReset').hidden = !canWrite || !van.custom;
+}
+function useSchematic() {
+  if (!van.custom) return;
+  scene.remove(van.group); disposeGroup(van.group);
+  van = schematic; scene.add(van.group);
+  scene.environment = null; hemi.intensity = 0.85;
+  renderModelRow();
+}
+function applyModel(root) {
+  root.updateMatrixWorld(true);
+  const box = new THREE.Box3().setFromObject(root);
+  const c = box.getCenter(new THREE.Vector3());
+  root.position.set(root.position.x - c.x, root.position.y - box.min.y, root.position.z - c.z);
+  root.updateMatrixWorld(true);
+  const pick = [], wheel = { F: [], R: [] };
+  genericBody = false;
+  root.traverse(o => {
+    if (!o.isMesh) return;
+    o.castShadow = true; o.receiveShadow = true;
+    (Array.isArray(o.material) ? o.material : [o.material]).forEach(m => { m.side = THREE.DoubleSide; });
+    const part = (o.parent && o.parent !== root && !o.parent.isScene) ? o.parent.name : o.name;
+    o.userData.part = part || '';
+    if (/^FrontDoor/.test(part || '')) genericBody = true;
+    const wm = /^Wheel_([FR])/.exec(part || '');
+    if (wm) wheel[wm[1]].push(new THREE.Box3().setFromObject(o).getCenter(new THREE.Vector3()));
+    pick.push(o);
+  });
+  if (wheel.F.length && wheel.R.length) {
+    axles.F = wheel.F.reduce((s, v) => s + v.x, 0) / wheel.F.length;
+    axles.R = wheel.R.reduce((s, v) => s + v.x, 0) / wheel.R.length;
+    axles.WR = wheel.F.reduce((s, v) => s + v.y, 0) / wheel.F.length;
+  }
+  if (van.custom) { scene.remove(van.group); disposeGroup(van.group); } else scene.remove(van.group);
+  van = { group: root, pickables: pick, custom: true };
+  scene.add(root);
+  scene.environment = envTex; hemi.intensity = 0.45;
+  renderModelRow();
+}
+function parseGlb(buf) {
+  return new Promise((res, rej) => new THREE.GLTFLoader().parse(buf, '', g => res(g.scene), rej));
+}
+function b64encode(ab) {
+  const bytes = new Uint8Array(ab); let s = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+  return btoa(s);
+}
+function b64decode(str) {
+  const bin = atob(str.trim()); const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out.buffer;
+}
+async function loadModelAsset(doc) {
+  if (!doc || !doc.assetId) { useSchematic(); return; }
+  if (loadedAsset === doc.assetId) return;
+  loadedAsset = doc.assetId;
+  busy('Loading the 3D model…');
+  try {
+    const txt = await (await fetch('/_blob/' + doc.assetId)).text();
+    const root = await parseGlb(b64decode(txt));
+    applyModel(root);
+  } catch (e) {
+    loadedAsset = null;
+    toast('The 3D model could not be loaded. Showing the schematic van.');
+  } finally { busy(''); }
+}
+$('#modelFile').addEventListener('change', async e => {
+  const f = e.target.files && e.target.files[0]; e.target.value = '';
+  if (!f) return;
+  if (!/\.glb$/i.test(f.name)) { toast('Choose a .glb file.'); return; }
+  if (f.size > 14.5 * 1024 * 1024) { toast('The model is too large. Keep it under 14 MB.'); return; }
+  try {
+    busy('Reading the model…');
+    const buf = await f.arrayBuffer();
+    const root = await parseGlb(buf.slice(0));
+    modelDoc = { name: f.name };
+    applyModel(root);
+    if (mode === 'db' && assets) {
+      busy('Uploading the model…');
+      const res = await assets.upload(new Blob([b64encode(buf)], { type: 'text/plain' }), { type: 'text/plain' });
+      modelDoc = { assetId: res.id, name: f.name, bytes: f.size, uploadedAt: new Date().toISOString() };
+      loadedAsset = res.id;
+      await withRetry(() => db.doc('vehicle/model').set(modelDoc));
+      toast('Model saved. Everyone with access now sees it.');
+    } else toast('Model loaded for this visit only.');
+    renderModelRow();
+    if (damages.length) toast('Check the existing marks: they were placed on the previous model.');
+  } catch (err) {
+    toast(err && err.code ? 'The model could not be saved: ' + err.code : 'That file could not be read as a 3D model.');
+  } finally { busy(''); }
+});
+$('#modelReset').addEventListener('click', async () => {
+  useSchematic(); modelDoc = null; loadedAsset = null;
+  if (mode === 'db') { try { await withRetry(() => db.doc('vehicle/model').delete()); } catch (e) { writeFailed(e); } }
+});
+
+function zoneCustom(obj, p, n) {
+  const part = obj.userData.part || '';
+  const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+  const mat = (mats[0] && mats[0].name) || '';
+  const side = p.z > 0 ? 'Right' : 'Left', lside = side.toLowerCase();
+  const fr = p.x > (axles.F + axles.R) / 2 ? 'Front' : 'Rear';
+  const glass = mat === 'Glass';
+  let m;
+  if ((m = /^Wheel_([FR])/.exec(part))) return `${m[1] === 'F' ? 'Front' : 'Rear'} ${lside} wheel`;
+  if (/^SlidingDoor/.test(part)) return `${side} sliding door${glass ? ' window' : p.y < 0.55 ? ', lower edge' : ''}`;
+  if (/^RearDoor/.test(part)) return `${side} rear door${glass ? ' window' : ''}`;
+  if (/^HandleSliding/.test(part)) return `${side} sliding door handle`;
+  if (/^HandleFront/.test(part)) return `${side} front door handle`;
+  if (/^TailLight/.test(part)) return `${side} tail light`;
+  if (/^Glass_FrontDoor/.test(part)) return `${side} front door window`;
+  if (/^(Seat|Steering|Interior)/.test(part)) return 'Interior';
+  if (/^FrontDoor/.test(part)) return `${side} front door${glass ? ' window' : p.y < 0.55 ? ', lower edge' : ''}`;
+  if (/^Mirror/.test(part)) return `${side} mirror`;
+  if (/^Headlight/.test(part)) return `${side} headlight`;
+  if (/^FrontWing/.test(part)) return `${side} front wing`;
+  if (/^Bumper_Front/.test(part)) return Math.abs(p.z) > 0.7 ? `Front bumper, ${lside} corner` : 'Front bumper';
+  if (/^Bumper_Rear/.test(part)) return Math.abs(p.z) > 0.7 ? `Rear bumper, ${lside} corner` : 'Rear bumper';
+  if (/^Grille/.test(part)) return 'Grille';
+  if (/^Bonnet/.test(part)) return 'Bonnet';
+  if (/^Windscreen/.test(part)) return 'Windscreen';
+  if (/^Underbody/.test(part)) return 'Underbody';
+  if (/^Roof/.test(part)) return 'Roof, ' + (p.x > axles.F - 0.6 ? 'front' : p.x > axles.R + 0.4 ? 'middle' : 'rear');
+  if ((m = /raw_?\.?0*(\d+)$/.exec(part))) {
+    const k = +m[1];
+    if (k === 5) return 'Grille badge';
+    if ([17, 18, 20, 21].includes(k)) return 'Grille';
+    if ([9, 10, 30, 31].includes(k)) return `${side} front indicator`;
+    return `${side} headlight`;
+  }
+  if (glass) {
+    if (n.x > 0.4) return 'Windscreen';
+    if (n.x < -0.4) return 'Rear window';
+    return p.x > 0.28 ? `${side} front door window` : `${side} rear side window`;
+  }
+  if (mat === 'Interior') return 'Interior';
+  if (mat === 'Plastic_Dark') return p.x > 0 ? (Math.abs(p.z) > 0.7 ? `Front bumper, ${lside} corner` : 'Front bumper') : (Math.abs(p.z) > 0.7 ? `Rear bumper, ${lside} corner` : 'Rear bumper');
+  for (const [ax, lab] of [[axles.F, 'Front'], [axles.R, 'Rear']]) {
+    if (Math.hypot(p.x - ax, p.y - axles.WR) < 0.52 && p.y < 0.95) return `${lab} ${lside} wheel arch`;
+  }
+  if (mat === 'Plastic_Black') return 'Underbody';
+  if (Math.abs(p.z) > 0.96 && p.y > 1.05 && p.x > 1.0) return `${side} mirror`;
+  if (n.y > 0.75 && p.y > 1.9) return 'Roof, ' + (p.x > 0.8 ? 'front' : p.x > -1.0 ? 'middle' : 'rear');
+  if (p.x > 1.35 && n.y > 0.35 && p.y > 0.85 && Math.abs(n.z) < 0.6) return 'Bonnet';
+  if (n.x > 0.3 && n.y > 0.3 && p.y > 1.2 && Math.abs(n.z) < 0.6) return 'A-pillar / windscreen frame';
+  if (Math.abs(n.z) > 0.6 && genericBody) {
+    const pos = p.x > (axles.F + axles.R) / 2 ? 'front half' : p.x > axles.R + 0.5 ? 'middle' : 'rear';
+    return `${side} side panel, ${pos}${p.y < 0.55 ? ', lower edge' : ''}`;
+  }
+  if (Math.abs(n.z) > 0.6) {
+    let panel;
+    if (p.x > 1.38) panel = 'front wing';
+    else if (p.x > 0.28) panel = 'front door';
+    else if (p.x > -1.0) panel = 'sliding door frame';
+    else if (p.x > -1.95) panel = 'rear side panel';
+    else panel = 'rear quarter panel';
+    if (p.y < 0.55) panel += ', lower edge';
+    return `${side} ${panel}`;
+  }
+  if (n.x > 0.4) return 'Front, ' + (Math.abs(p.z) < 0.5 ? 'centre' : lside + ' corner');
+  if (n.x < -0.4) return `Rear, ${Math.abs(p.z) < 0.5 ? 'centre' : lside + ' corner'}`;
+  if (n.y < -0.3) return 'Underbody';
+  return `${side} ${fr.toLowerCase()} edge`;
+}
+
+// ---------- Persistence ----------
+function writeFailed(err) {
+  if (err && err.code === 'invalid_argument') { readOnly = true; renderVehicle(); renderList(); toast('You have view access only, so changes can’t be saved.'); }
+  else if (err && err.code === 'quota_exceeded') toast('Storage is full. Delete old entries to add more.');
+  else toast('Saving failed. Check your connection and try again.');
+}
+async function withRetry(fn) {
+  try { return await fn(); }
+  catch (e) {
+    if (e && e.code === 'unavailable') { await new Promise(r => setTimeout(r, 400 + Math.random() * 600)); return fn(); }
+    throw e;
+  }
+}
+async function saveDamage(d) {
+  if (mode === 'db') {
+    const { id, ...body } = d;
+    const prev = damages.slice();
+    damages = damages.filter(x => x.id !== id).concat([d]); // optimistic
+    renderAll();
+    try { await withRetry(() => db.collection('damages').doc(id).set(body)); return true; }
+    catch (e) { damages = prev; renderAll(); writeFailed(e); return false; }
+  }
+  damages = damages.filter(x => x.id !== d.id).concat([d]);
+  lsSet('vanlog:damages', damages);
+  return true;
+}
+async function removeDamage(id) {
+  const prev = damages.slice();
+  damages = damages.filter(x => x.id !== id);
+  renderAll();
+  if (mode === 'db') {
+    try { await withRetry(() => db.collection('damages').doc(id).delete()); toast('Damage deleted.'); }
+    catch (e) { damages = prev; renderAll(); writeFailed(e); }
+  } else { lsSet('vanlog:damages', damages); toast('Damage deleted.'); }
+}
+async function saveVehicle() {
+  if (mode === 'db') {
+    try { await withRetry(() => db.doc('vehicle/info').set(vehicle)); } catch (e) { writeFailed(e); }
+  } else lsSet('vanlog:vehicle', vehicle);
+}
+
+function startLocal() {
+  mode = 'local';
+  damages = lsGet('vanlog:damages', []);
+  vehicle = Object.assign(vehicle, lsGet('vanlog:vehicle', {}));
+  $('#sync').textContent = 'Demo: data stays in this tab';
+  renderVehicle(); renderAll(); renderModelRow();
+}
+function startDb() {
+  mode = 'db';
+  $('#sync').textContent = 'Syncing…';
+  db.collection('damages').onSnapshot(snap => {
+    damages = snap.docs.map(s => Object.assign({ id: s.id }, s.data()));
+    if (selectedId && !damages.some(d => d.id === selectedId)) selectedId = null;
+    $('#sync').textContent = snap.metadata.fromCache ? 'Syncing…' : 'Synced';
+    renderAll();
+  }, err => { $('#sync').textContent = err.code === 'revoked' ? 'Access ended' : 'Offline, reload to reconnect'; });
+  db.doc('vehicle/model').onSnapshot(snap => {
+    modelDoc = snap.exists ? snap.data() : null;
+    loadModelAsset(modelDoc); renderModelRow();
+  }, () => {});
+  db.doc('vehicle/info').onSnapshot(snap => {
+    if (snap.exists) vehicle = Object.assign({ model: 'Transporter' }, snap.data());
+    renderVehicle();
+  }, () => {});
+}
+
+renderVehicle(); renderAll();
+(async () => {
+  const use = n => (window.claude && typeof window.claude.use === 'function') ? window.claude.use(n).catch(() => null) : Promise.resolve(null);
+  const [d, a, dl] = await Promise.all([use('db'), use('assets'), use('downloads')]);
+  db = d; assets = a; downloads = dl;
+  if (db) startDb(); else {
+    startLocal();
+    try {
+      const r = await fetch('models/default.glb');
+      if (r.ok && /model|octet|gltf/.test(r.headers.get('content-type') || 'model/gltf-binary')) {
+        busy('Loading the 3D model…');
+        modelDoc = { name: 'default model' };
+        applyModel(await parseGlb(await r.arrayBuffer()));
+      }
+    } catch (e) { /* no default model shipped: keep the schematic van */ }
+    finally { busy(''); }
+  }
+  renderModelRow();
+})();
+
+// ---------- Exports ----------
+async function saveFile(filename, data, mime) {
+  if (downloads) {
+    try { await downloads.save({ filename, data }); }
+    catch (e) {
+      if (e && e.code === 'declined') return;
+      toast(e && e.code === 'rate_limited' ? 'A download prompt is already open.' : 'The download could not start.');
+    }
+    return;
+  }
+  const blob = new Blob([data], { type: mime });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
+const fileBase = () => 'damage-report-' + ((vehicle.plate || 'transporter').replace(/[^A-Za-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'transporter') + '-' + today();
+
+$('#resetDemo').addEventListener('click', () => {
+  const b = $('#resetDemo');
+  if (!b.classList.contains('armed')) { b.classList.add('armed'); b.textContent = 'Confirm reset'; setTimeout(() => { b.classList.remove('armed'); b.textContent = 'Reset demo'; }, 4000); return; }
+  try { STORE.removeItem('vanlog:damages'); STORE.removeItem('vanlog:vehicle'); } catch (e) {}
+  damages = []; selectedId = null; vehicle = { model: 'Transporter', plate: '', vin: '', mileage: '' };
+  renderVehicle(); renderAll(); b.classList.remove('armed'); b.textContent = 'Reset demo'; toast('Demo reset.');
+});
+$('#exportCsv').addEventListener('click', () => {
+  const cols = ['No', 'Location', 'Type', 'Severity', 'Status', 'Date noticed', 'Noticed by', 'Description', 'Photos'];
+  const q = v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
+  const rows = damages.slice().sort((a, b) => a.n - b.n).map(d => [d.n, d.zone, d.type, SEV[d.severity], d.status === 'repaired' ? 'Repaired' : 'Open', d.date, d.by, d.note, (d.photos || []).length].map(q).join(','));
+  saveFile(fileBase() + '.csv', '\ufeff' + [cols.map(q).join(',')].concat(rows).join('\r\n'), 'text/csv');
+});
+
+function snapshot(name, w, h) {
+  const prevPos = camera.position.clone(), prevT = controls.target.clone(), prevPR = renderer.getPixelRatio();
+  const prevSel = selectedId;
+  selectedId = null; rebuildMarkers();
+  renderer.setPixelRatio(1);
+  renderer.setSize(w, h, false);
+  camera.aspect = w / h;
+  const v = VIEWS[name];
+  camera.position.fromArray(v.pos);
+  camera.lookAt(new THREE.Vector3().fromArray(v.t));
+  camera.updateProjectionMatrix();
+  const bg = document.documentElement.matches(':root[data-theme="dark"]') ? 0x161f26 : 0xf3f5f7;
+  renderer.setClearColor(bg, 1);
+  renderer.render(scene, camera);
+  const url = renderer.domElement.toDataURL('image/jpeg', 0.9);
+  renderer.setClearColor(0x000000, 0);
+  renderer.setPixelRatio(prevPR);
+  camera.position.copy(prevPos); controls.target.copy(prevT);
+  selectedId = prevSel; rebuildMarkers();
+  resize(); controls.update();
+  return url;
+}
+async function toDataUrl(src) {
+  if (src.startsWith('data:')) return src;
+  try {
+    const b = await (await fetch(src)).blob();
+    return await new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.onerror = rej; fr.readAsDataURL(b); });
+  } catch (e) { return null; }
+}
+$('#exportReport').addEventListener('click', async () => {
+  const btn = $('#exportReport');
+  btn.disabled = true; btn.textContent = 'Preparing…';
+  try {
+    const shots = [['left', 'Left side'], ['right', 'Right side'], ['front', 'Front'], ['rear', 'Rear'], ['top', 'Top']].map(([k, label]) => ({ label, url: snapshot(k, 1100, 640) }));
+    const list = damages.slice().sort((a, b) => a.n - b.n);
+    const photoMap = {};
+    for (const d of list) {
+      photoMap[d.id] = [];
+      for (const p of d.photos || []) { const u = await toDataUrl(photoSrc(p)); if (u) photoMap[d.id].push(u); }
+    }
+    const light = { minor: '#C98F00', moderate: '#E0621F', severe: '#C3212B' };
+    const open = list.filter(d => d.status !== 'repaired').length;
+    const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Damage report ${esc(vehicle.plate)}</title>
+<style>
+body{font-family:"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:#16222C;margin:0;padding:32px;max-width:1000px;margin-inline:auto;line-height:1.45}
+h1{font-size:26px;margin:0 0 4px}h2{font-size:18px;margin:32px 0 10px;border-bottom:2px solid #16222C;padding-bottom:4px}
+.meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px 24px;margin:16px 0}
+.meta div span{display:block;font-size:12px;color:#5A6874}
+.views{display:grid;grid-template-columns:1fr 1fr;gap:12px}.views figure{margin:0}.views img{width:100%;border:1px solid #D2D9DF;border-radius:6px}
+figcaption{font-size:13px;color:#5A6874;margin-top:3px}
+table{width:100%;border-collapse:collapse;font-size:14px}th,td{text-align:left;padding:7px 8px;border-bottom:1px solid #D2D9DF;vertical-align:top}th{font-size:12px;color:#5A6874}
+.n{display:inline-block;width:24px;height:24px;border-radius:50%;color:#fff;text-align:center;line-height:24px;font-weight:700;font-size:13px}
+.d{break-inside:avoid;margin:18px 0;padding-top:4px}.d h3{margin:0 0 4px;font-size:16px}.d p{margin:2px 0}
+.ph{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}.ph img{max-width:calc(50% - 4px);max-height:320px;border-radius:6px;border:1px solid #D2D9DF}
+.small{font-size:12px;color:#5A6874;margin-top:40px}
+@media print{body{padding:0}h2{break-after:avoid}}
+</style></head><body>
+<h1>Vehicle damage report</h1>
+<div class="meta">
+<div><span>Vehicle</span>${esc(vehicle.model || 'Transporter')}</div>
+<div><span>Number plate</span>${esc(vehicle.plate || 'Not entered')}</div>
+<div><span>VIN</span>${esc(vehicle.vin || 'Not entered')}</div>
+<div><span>Mileage</span>${vehicle.mileage ? esc(vehicle.mileage) + ' km' : 'Not entered'}</div>
+<div><span>Report date</span>${esc(fmtDate(today()))}</div>
+<div><span>Damages</span>${list.length} logged, ${open} open</div>
+</div>
+<h2>Damage locations</h2>
+<div class="views">${shots.map(s => `<figure><img src="${s.url}" alt="${esc(s.label)} view with damage markers"><figcaption>${esc(s.label)}</figcaption></figure>`).join('')}</div>
+<h2>Summary</h2>
+${list.length ? `<table><thead><tr><th>No.</th><th>Location</th><th>Type</th><th>Severity</th><th>Status</th><th>Noticed</th><th>By</th></tr></thead><tbody>
+${list.map(d => `<tr><td><span class="n" style="background:${d.status === 'repaired' ? '#8A949C' : light[d.severity]}">${d.n}</span></td><td>${esc(d.zone)}</td><td>${esc(d.type)}</td><td>${esc(SEV[d.severity])}</td><td>${d.status === 'repaired' ? 'Repaired' : 'Open'}</td><td>${esc(fmtDate(d.date))}</td><td>${esc(d.by)}</td></tr>`).join('')}
+</tbody></table>` : '<p>No damages logged.</p>'}
+${list.length ? '<h2>Details</h2>' : ''}
+${list.map(d => `<div class="d"><h3>${d.n}. ${esc(d.zone)}</h3><p>${esc(d.type)}, ${esc(SEV[d.severity])}, ${d.status === 'repaired' ? 'repaired' : 'open'}. Noticed ${esc(fmtDate(d.date))}${d.by ? ' by ' + esc(d.by) : ''}.</p>${d.note ? `<p>${esc(d.note)}</p>` : ''}${photoMap[d.id].length ? `<div class="ph">${photoMap[d.id].map((u, i) => `<img src="${u}" alt="Photo ${i + 1} of damage ${d.n}">`).join('')}</div>` : ''}</div>`).join('')}
+<p class="small">3D views are a schematic of the vehicle. Marker positions show the approximate location of each damage.</p>
+</body></html>`;
+    await saveFile(fileBase() + '.html', html, 'text/html');
+  } catch (e) {
+    toast('The report could not be created.');
+  } finally {
+    btn.disabled = false; btn.textContent = 'Download report';
+  }
+});
+})();
+
+</script>
+</body>
+</html>
